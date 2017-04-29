@@ -30,6 +30,7 @@ Run the plugin command "Craftlite open". If you enter the menu of a craft table,
 - Craft table: a collection of craft rules
 - Craft rules: a craft rule includes materials, target items, rid. Player consume materials to make target items.
 - rid: each craft rules should have its unique id. It helps the plugin to manage the rules.
+- validity: each rule should be enabled before player can use it. Please set the rule valid before you let player us it!
 
 
 
@@ -87,6 +88,13 @@ Here is the example:
     ]
 }
 ```
+
+### Plugin Commands:
+
+- `Craftlite open`: open the craft table
+- `Craftlite add <rid>`: set one craft rule valid
+- `Craftlite remove <rid>`: set one craft rule invalid
+- `Craftlite clear`: clear the validity table.
 
 ### Plugin compatibility
 
