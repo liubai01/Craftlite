@@ -2,11 +2,13 @@
 
 ### liubai01, 2017.4.29
 
+
+
 ### Introduction
 
 Craftlite is a lightweight plugin of [RPGMakerMV](http://www.rpgmakerweb.com/products/programs/rpg-maker-mv). With it, you can design your own recipe list easily.
 
-
+![Logo](https://github.com/liubai01/Craftlite/raw/master/images/Craftlite.png)
 
 ### Getting started
 
