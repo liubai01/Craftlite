@@ -5,6 +5,7 @@
 /*:
  * @plugindesc A lightweight craft plugin
  * @author liubai01
+ * @version: 1.0.0
  *
  * @param Title
  * @desc The title of the craft menu.
@@ -21,6 +22,14 @@
  * @param Material
  * @desc The name for Material in menu.
  * @default Material
+ *
+ * @param Font Colour 01
+ * @desc The color of the items are enough or not overflowed.
+ * @default #ffffff
+ *
+ * @param Font Colour 02
+ * @desc The color of the items are not enough or overflowed.
+ * @default #666666
  * 
  * @help
  *
@@ -37,11 +46,16 @@ var Craftlite = function() {
     throw new Error('This is a static class');
 }
 
+//=============================================================================
+// LoadIn Part
+//=============================================================================
 /*!
  *  This is an object that contained  the informaion about craft rules. 
- *  Each element in the $dataCraftLite.data represents a rule.
+ *  Each element in the $dataCraftLite.data list represents a rule.
  *  Data stores at data/CraftRule.json
  *  Please create data/CraftRules.json if it doesn't exsits!
+ *  You can start to create your own craft rules from the example json file.
+ * 
  *  The format of craft rule: 
  *  {
  *  rid:<rid>, 
@@ -53,13 +67,20 @@ var Craftlite = function() {
  *  
  * @type {Object}
  */
+$dataCraftLite = {};
 DataManager.loadDataFile('$dataCraftLite', 'CraftRules.json');
 
+//=============================================================================
+// Parameter Variables
+//=============================================================================
 Craftlite.parameters = PluginManager.parameters('Craftlite');
-Craftlite.unknownData = String(Craftlite.parameters['Unknown Craft Rule'] || '??????');
-Craftlite.unknownItemName = String(Craftlite.parameters['Unknown Item'] || '??????');
-Craftlite.menuTitle = String(Craftlite.parameters['Title'] || 'Craft Table');
-Craftlite.menuMaterial = String(Craftlite.parameters['Material'] || 'Material');
+Craftlite.para = {};
+Craftlite.para.unknownData = String(Craftlite.parameters['Unknown Craft Rule'] || '??????');
+Craftlite.para.unknownItemName = String(Craftlite.parameters['Unknown Item'] || '??????');
+Craftlite.para.menuTitle = String(Craftlite.parameters['Title'] || 'Craft Table');
+Craftlite.para.menuMaterial = String(Craftlite.parameters['Material'] || 'Material');
+Craftlite.para.colorValid = String(Craftlite.parameters['Font Color 01'] || '#ffffff');
+Craftlite.para.colorInvalid = String(Craftlite.parameters['Font Color 02'] || '#666666');
 
 /**
  *  The intermediate variable to extend the Game_Interpreter.prototype 
@@ -73,22 +94,37 @@ Game_Interpreter.prototype.pluginCommand = function(command, args) {
     Craftlite._Game_Interpreter_pluginCommand.call(this, command, args);
     if (command === 'Craftlite') {
         switch (args[0]) {
+            /*
+             * Craftlite open: open the craft table
+             */
             case 'open':
                 SceneManager.push(Craftlite.Scene);
                 break;
+            /*
+             * Craftlite add <rid>: make target craft rule valid
+             */
             case 'add':
                 Craftlite.setValid(args[1], true);
                 break;
+            /*
+             * Craftlite remove <rid>: make target craft rule invalid
+             */
             case 'remove':
                 Craftlite.setValid(args[1], false);
                 break;
-            case 'complete':
+            /*
+             * Craftlite clear: clear the valid table
+             */
+            case 'clear':
                 Craftlite.clearValidTable();
                 break;
         }
     }
 }
 
+//=============================================================================
+// General Functions
+//=============================================================================
 /**
  * This function Both initialize the plugin database in $gameSystem
  *  and clear the data in plugin database.
@@ -96,7 +132,6 @@ Game_Interpreter.prototype.pluginCommand = function(command, args) {
  *  Note: $gameSystem will be serialized in the save file. To persist the
  *  data of plugin, it can be a good way.
  *  
- * @return {None}
  */
 Craftlite.clearValidTable = function() {
     if (!$gameSystem.Craftlite) {
@@ -212,6 +247,12 @@ Craftlite._craftItem = function(materials, targetItems) {
     }
 }
 
+/**
+ * To judge whether player has the target Item
+ * @param  {Object}  items An object that contains info of items.
+ *                                                e.g: {<itemID>: <amount>, ...}
+ * @return {Boolean}       whehter player has the target Item
+ */
 Craftlite._hasItems = function(items) {
     for (var item in items) {
         if (items.hasOwnProperty(item)) {
@@ -225,6 +266,13 @@ Craftlite._hasItems = function(items) {
     return (true);
 }
 
+/**
+ * try to delete the items
+ * @param  {Object} items An object that contains info of items.
+ *                                                e.g: {<itemID>: <amount>, ...}
+ * @return {Boolean}       Whether delete is successful or not.
+ *                                      e.g: do not have enought items.
+ */
 Craftlite._deleteItems = function(items) {
     if (Craftlite._hasItems(items)) {
         for (var item in items) {
@@ -243,7 +291,25 @@ Craftlite._deleteItems = function(items) {
     }
 }
 
+/**
+ * try to give items
+ * @param  {Object} items An object that contains info of items.
+ *                                       e.g: {<itemID>: <amount>, ...}
+ * @return {Boolean}       Whether give items successful or not.
+ */
 Craftlite._giveItems = function(items) {
+    if (!Craftlite._canGiveItem(items)) {
+        return (false);
+    }
+    for (var item in items) {
+        if (items.hasOwnProperty(item)) {
+            $gameParty._items[item] += items[item];
+        }
+    }
+    return (true);
+}
+
+Craftlite._canGiveItem = function(items) {
     for (var item in items) {
         if (items.hasOwnProperty(item)) {
             Craftlite.validItemID(item);
@@ -255,12 +321,19 @@ Craftlite._giveItems = function(items) {
             }
         }
     }
-    for (var item in items) {
-        if (items.hasOwnProperty(item)) {
-            $gameParty._items[item] += items[item];
-        }
-    }
     return (true);
+}
+
+Craftlite._canCraft = function(rid) {
+    if (!Craftlite.isValid(rid)) {
+        return (false);
+    }
+    var rule = Craftlite._getCraftRuleByID(rid);
+    if (Craftlite._hasItems(rule.materials) && Craftlite._canGiveItem(rule.targetItems)) {
+        return (true);
+    } else {
+        return (false);
+    }
 }
 
 Craftlite.validItemID = function(itemID) {
@@ -269,6 +342,9 @@ Craftlite.validItemID = function(itemID) {
     }
 }
 
+//=============================================================================
+// GUI Part
+//=============================================================================
 Craftlite.Scene = function() {
     this.initialize.apply(this, arguments);
 }
@@ -302,6 +378,10 @@ Craftlite.Scene.prototype.create = function() {
     this.addWindow(this._WindowTitle);
 }
 
+/**
+ * @class Window for choosing the craft rule that players want
+ * @private
+ */
 Craftlite._WindowIndexRule = function() {
     this.initialize.apply(this, arguments);
 }
@@ -319,16 +399,15 @@ Craftlite._WindowIndexRule.prototype.initialize = function(x, y) {
     this.refresh();
     this.setTopRow(Craftlite._WindowIndexRule.lastTopRow);
     this.select(Craftlite._WindowIndexRule.lastIndex);
-    // to recover the status of EnemyBook Index to last version
     this.activate(); // make the select effective
 }
 
 Craftlite._WindowIndexRule.prototype.maxCols = function() {
-    return(1);
+    return (1);
 }
 
 Craftlite._WindowIndexRule.prototype.maxItems = function() {
-    return(this._list ? this._list.length : 0);
+    return (this._list ? this._list.length : 0);
 }
 
 Craftlite._WindowIndexRule.prototype.setDescWindow = function(descWindow) {
@@ -346,12 +425,27 @@ Craftlite._WindowIndexRule.prototype.setTargetWindow = function(targetWindow) {
     this.updateTarget();
 }
 
-Craftlite._WindowIndexRule.prototype.select = function (index) {
+Craftlite._WindowIndexRule.prototype.select = function(index) {
     Window_Selectable.prototype.select.call(this, index);
     this.updateDesc();
     this.updateMaterial();
     this.updateTarget();
 }
+
+Craftlite._WindowIndexRule.prototype.processOk = function() {
+    if (this.isCurrentItemEnabled()) {
+        if (Craftlite._canCraft(this._list[this.index()].rid)) {
+            this.playOkSound();
+        } else {
+            this.playBuzzerSound();
+        }
+        this.updateInputData();
+        this.deactivate();
+        this.callOkHandler();
+    } else {
+        this.playBuzzerSound();
+    }
+};
 
 Craftlite._WindowIndexRule.prototype.updateDesc = function() {
     if (this._descWindow) {
@@ -359,7 +453,7 @@ Craftlite._WindowIndexRule.prototype.updateDesc = function() {
             var descInfo = this._list[this.index()].desc;
             this._descWindow.setDesc(descInfo);
         } else {
-            this._descWindow.setDesc(Craftlite.unknownData);
+            this._descWindow.setDesc(Craftlite.para.unknownData);
         }
     }
 }
@@ -406,7 +500,7 @@ Craftlite._WindowIndexRule.prototype.drawItem = function(index) {
     if (Craftlite.isValid(rule.rid)) {
         name = rule.name;
     } else {
-        name = Craftlite.unknownData;
+        name = Craftlite.para.unknownData;
     }
     this.drawText(name, rect.x, rect.y, rect.width);
 }
@@ -420,7 +514,7 @@ Craftlite._WindowIndexRule.prototype.processCancel = function() {
 
 Craftlite._WindowIndexRule.prototype.getCraftFunction = function() {
     var indexWindow = this;
-    return(function() {
+    return (function() {
         Craftlite.craftItem(indexWindow._list[indexWindow.index()].rid);
         indexWindow.updateMaterial();
         indexWindow.updateTarget();
@@ -428,6 +522,10 @@ Craftlite._WindowIndexRule.prototype.getCraftFunction = function() {
     });
 }
 
+/**
+ * @class Window to display the needed Materials
+ * @private
+ */
 Craftlite._WindowMaterials = function() {
     this.initialize.apply(this, arguments);
 }
@@ -466,27 +564,41 @@ Craftlite._WindowMaterials.prototype.refresh = function() {
 
             this.drawItemName(item_obj, x, y, this.lineHeight());
 
-            required_num = "-" + this._items[item].toString();
+            required_num = "- " + this._items[item].toString();
             current_num = ($gameParty._items[item] || 0).toString();
 
             var x1 = this.contents.width - this.textWidth(current_num);
-            var x2 = x1 - this.textWidth("/")
+            var x2 = x1 - this.textWidth(" / ")
             var x3 = x2 - this.textWidth(required_num);
 
-            this.drawText(current_num, x1, y);
-            this.drawText("/", x2, y);
-            this.drawText(required_num, x3, y);
+            var itemOBJ = {};
+            itemOBJ[item] = this._items[item];
 
-            var x4 = (this.contents.width - this.textWidth(Craftlite.menuMaterial)) / 2;
+            if (Craftlite._hasItems(itemOBJ)) {
+                this.changeTextColor(Craftlite.para.colorValid);
+            } else {
+                this.changeTextColor(Craftlite.para.colorInvalid);
+            }
+
+            this.drawText(current_num, x1, y);
+            this.drawText(" / ", x2, y);
+            this.drawText(required_num, x3, y);
+            this.resetTextColor();
+
+            var x4 = (this.contents.width - this.textWidth(Craftlite.para.menuMaterial)) / 2;
             var y4 = 0;
 
-            this.drawText(Craftlite.menuMaterial, x4, y4);
+            this.drawText(Craftlite.para.menuMaterial, x4, y4);
 
             sq += 1;
         }
     }
 }
 
+/**
+ * @class Window to display the target items
+ * @private
+ */
 Craftlite._WindowTargets = function() {
     this.initialize.apply(this, arguments);
 }
@@ -525,22 +637,37 @@ Craftlite._WindowTargets.prototype.refresh = function() {
 
             this.drawItemName(item_obj, x, y, this.lineHeight());
 
-            target_num = "+" + this._targetItems[item].toString();
+            target_num = "+ " + this._targetItems[item].toString();
             current_num = ($gameParty._items[item] || 0).toString();
 
             var x1 = this.contents.width - this.textWidth(current_num);
-            var x2 = x1 - this.textWidth("/")
+            var x2 = x1 - this.textWidth(" / ")
             var x3 = x2 - this.textWidth(target_num);
 
+            var item_obj = {};
+            item_obj[item] = this._targetItems[item];
+
+            if (Craftlite._canGiveItem(item_obj)) {
+                this.changeTextColor(Craftlite.para.colorValid);
+            } else {
+                this.changeTextColor(Craftlite.para.colorInvalid);
+            }
+
             this.drawText(current_num, x1, y);
-            this.drawText("/", x2, y);
+            this.drawText(" / ", x2, y);
             this.drawText(target_num, x3, y);
+
+            this.resetTextColor();
 
             sq += 1;
         }
     }
 }
 
+/**
+ * @class Window to display the description of selected craft rule
+ * @private
+ */
 Craftlite._WindowDescription = function() {
     this.initialize.apply(this, arguments);
 }
@@ -581,7 +708,7 @@ Craftlite._WindowTitle.prototype.initialize = function(x, y) {
 }
 
 Craftlite._WindowTitle.prototype.refresh = function() {
-    var x = (this.contents.width - this.textWidth(Craftlite.menuTitle)) / 2;
+    var x = (this.contents.width - this.textWidth(Craftlite.para.menuTitle)) / 2;
     var y = (this.contents.height - this.lineHeight()) / 2;
-    this.drawText(Craftlite.menuTitle, x, y);
+    this.drawText(Craftlite.para.menuTitle, x, y);
 }
